@@ -46,7 +46,7 @@ export default function FAQSection({ title = 'Frequently Asked Questions', subti
     {
       id: 'faq_cancellation',
       question: 'What is your cancellation policy?',
-      answer: 'If you cancel more than 30 days before the event, you’ll get a full refund, but we’ll keep 10% as a processing fee, If you cancel between 15 and 29 days before the event, you’ll get back half of what you paid, If you cancel less than 14 days before the event, we can’t offer a refund, but we can help you reschedule if there’s availability. or reserve your money for your next booking'
+      answer: 'If you cancel more than 30 days before the event, you’ll get a full refund, but we’ll keep 10% as a processing fee, If you cancel between 15 and 29 days before the event, you’ll get back half of what you paid, If you cancel less than 14 days before the event, we can’t offer a refund, but we can help you reschedule if there’s availability, or reserve your money for your next booking.'
     },
     {
       id: 'faq_reschedule',

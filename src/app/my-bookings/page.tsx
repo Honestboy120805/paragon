@@ -29,6 +29,36 @@ interface TestimonialForm {
   photoUrl: string;
 }
 
+interface ToastMessage {
+  id: number;
+  type: 'success' | 'error' | 'warning';
+  message: string;
+}
+
+function Toast({ toasts, onRemove }: { toasts: ToastMessage[]; onRemove: (id: number) => void }) {
+  return (
+    <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium pointer-events-auto
+            animate-[slideInRight_0.3s_ease-out]
+            ${toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : 'bg-yellow-600'}`}
+        >
+          <Icon
+            name={toast.type === 'success' ? 'CheckCircleIcon' : toast.type === 'error' ? 'XCircleIcon' : 'ExclamationTriangleIcon'}
+            className="w-5 h-5 flex-shrink-0"
+          />
+          <span>{toast.message}</span>
+          <button onClick={() => onRemove(toast.id)} className="ml-2 hover:opacity-75">
+            <Icon name="XMarkIcon" className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MyBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +81,7 @@ export default function MyBookingsPage() {
   });
   const [testimonialSubmitted, setTestimonialSubmitted] = useState(false);
   const [submittingTestimonial, setSubmittingTestimonial] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -60,6 +91,16 @@ export default function MyBookingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const supabase = createClient();
+
+  const addToast = useCallback((type: ToastMessage['type'], message: string) => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+  }, []);
+
+  const removeToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const fetchBookings = async (userEmail: string) => {
     setLoading(true);
@@ -104,14 +145,14 @@ export default function MyBookingsPage() {
 
       if (error) throw error;
 
-      alert('Booking rescheduled successfully!');
+      addToast('success', 'Booking rescheduled successfully!');
       setShowRescheduleModal(false);
       setSelectedBooking(null);
       setNewDate('');
       fetchBookings(email);
     } catch (error) {
       console.error('Error rescheduling booking:', error);
-      alert('Failed to reschedule booking. Please try again.');
+      addToast('error', 'Failed to reschedule booking. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -138,14 +179,14 @@ export default function MyBookingsPage() {
 
       if (error) throw error;
 
-      alert('Booking cancelled successfully.');
+      addToast('success', 'Booking cancelled successfully!');
       setShowCancelModal(false);
       setSelectedBooking(null);
       setCancelReason('');
       fetchBookings(email);
     } catch (error) {
       console.error('Error cancelling booking:', error);
-      alert('Failed to cancel booking. Please try again.');
+      addToast('error', 'Failed to cancel booking. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -197,18 +238,18 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
 
   const handlePhotoFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (JPG, PNG, GIF, or WebP).');
+      addToast('warning', 'Please select an image file (JPG, PNG, GIF, or WebP).');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image must be smaller than 5MB.');
+      addToast('warning', 'Image must be smaller than 5MB.');
       return;
     }
     setPhotoFile(file);
     const reader = new FileReader();
     reader.onload = (e) => setPhotoPreview(e.target?.result as string);
     reader.readAsDataURL(file);
-  }, []);
+  }, [addToast]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -280,7 +321,7 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
       setTestimonialSubmitted(true);
     } catch (error) {
       console.error('Error submitting testimonial:', error);
-      alert('Failed to submit testimonial. Please try again.');
+      addToast('error', 'Failed to submit testimonial. Please try again.');
     } finally {
       setSubmittingTestimonial(false);
     }
@@ -340,7 +381,7 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
           <div className="mt-5 sm:mt-6 text-center">
             <Link href="/booking" className="text-sm sm:text-base text-primary hover:underline flex items-center justify-center gap-2">
               <Icon name="PlusCircleIcon" className="w-4 h-4 sm:w-5 sm:h-5" />
-              Make a New Booking
+              Make A New Booking
             </Link>
           </div>
         </div>
@@ -748,6 +789,8 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
           </div>
         </div>
       )}
+
+      <Toast toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
