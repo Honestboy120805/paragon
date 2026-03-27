@@ -15,8 +15,45 @@ interface FormData {
 interface FieldErrors {
   name?: string;
   email?: string;
+  phone?: string;
   subject?: string;
   message?: string;
+}
+
+interface ToastMessage {
+  id: string;
+  type: 'success' | 'error' | 'warning';
+  message: string;
+}
+
+function Toast({ toasts, removeToast }: { toasts: ToastMessage[]; removeToast: (id: string) => void }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className="pointer-events-auto flex items-start gap-3 min-w-[300px] max-w-sm px-5 py-4 rounded-2xl shadow-lg text-sm font-medium"
+          style={{
+            animation: 'slideInRight 0.3s ease-out',
+            background: toast.type === 'success' ? '#22c55e' : toast.type === 'error' ? '#ef4444' : '#f59e0b',
+            color: '#fff',
+          }}
+        >
+          <span className="mt-0.5 shrink-0">
+            {toast.type === 'success' && <Icon name="CheckCircleIcon" size={20} variant="solid" />}
+            {toast.type === 'error' && <Icon name="XCircleIcon" size={20} variant="solid" />}
+            {toast.type === 'warning' && <Icon name="ExclamationCircleIcon" size={20} variant="solid" />}
+          </span>
+          <span className="flex-1">{toast.message}</span>
+          <button onClick={() => removeToast(toast.id)} className="shrink-0 opacity-80 hover:opacity-100 transition-opacity">
+            <Icon name="XMarkIcon" size={16} variant="solid" />
+          </button>
+        </div>
+      ))}
+      <style>{`@keyframes slideInRight { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+    </div>
+  );
 }
 
 export default function ContactForm() {
@@ -32,6 +69,17 @@ export default function ContactForm() {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = (type: ToastMessage['type'], message: string) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => removeToast(id), 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   useEffect(() => {
     setIsHydrated(true);
@@ -136,7 +184,7 @@ export default function ContactForm() {
       setIsSubmitted(true);
     } catch (error) {
       console.error('Error submitting contact form:', error);
-      alert('Failed to submit contact form. Please try again.');
+      addToast('error', 'Failed to submit contact form. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -176,142 +224,145 @@ export default function ContactForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card rounded-[60px] p-12 md:p-20 shadow-sm border border-border space-y-8">
-      <div className="space-y-4">
-        <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-          Full Name *
-        </label>
-        <input
-          type="text"
-          name="name"
-          value={formData.name}
-          onChange={handleChange}
-          onBlur={() => handleBlur('name')}
-          placeholder="John Doe"
-          className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-            errors.name && touched.name
-              ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-          }`}
-        />
-        {errors.name && touched.name && (
-          <p className="text-red-500 text-sm flex items-center gap-2">
-            <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-            {errors.name}
-          </p>
-        )}
-      </div>
+     <>
+      <Toast toasts={toasts} removeToast={removeToast} />
+      <form onSubmit={handleSubmit} className="bg-card rounded-[60px] p-12 md:p-20 shadow-sm border border-border space-y-8">
+        <div className="space-y-4">
+          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+            Full Name *
+          </label>
+          <input
+            type="text"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            onBlur={() => handleBlur('name')}
+            placeholder="John Doe"
+            className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
+              errors.name && touched.name
+                ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+            }`}
+          />
+          {errors.name && touched.name && (
+            <p className="text-red-500 text-sm flex items-center gap-2">
+              <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+              {errors.name}
+            </p>
+          )}
+        </div>
 
-      <div className="space-y-4">
-        <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-          Email Address *
-        </label>
-        <input
-          type="email"
-          name="email"
-          value={formData.email}
-          onChange={handleChange}
-          onBlur={() => handleBlur('email')}
-          placeholder="john@example.com"
-          className={`w-full px-3 py-2 sm:px-6 sm:py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-            errors.email && touched.email
-              ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-          }`}
-        />
-        {errors.email && touched.email && (
-          <p className="text-red-500 text-sm flex items-center gap-2">
-            <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-            {errors.email}
-          </p>
-        )}
-      </div>
+        <div className="space-y-4">
+          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+            Email Address *
+          </label>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            onBlur={() => handleBlur('email')}
+            placeholder="john@example.com"
+            className={`w-full px-3 py-2 sm:px-6 sm:py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
+              errors.email && touched.email
+                ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+            }`}
+          />
+          {errors.email && touched.email && (
+            <p className="text-red-500 text-sm flex items-center gap-2">
+              <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+              {errors.email}
+            </p>
+          )}
+        </div>
 
-      <div className="space-y-4">
-        <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-          Phone Number *
-        </label>
-        <input
-          type="tel"
-          name="phone"
-          value={formData.phone}
-          onChange={handleChange}
-          onBlur={() => handleBlur('phone')}
-          placeholder="+1 (555) 000-0000"
-          className={`w-full px-3 py-2 sm:px-6 sm:py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-            errors.phone && touched.phone
-              ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-          }`}
-        />
-      </div>
+        <div className="space-y-4">
+          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+            Phone Number *
+          </label>
+          <input
+            type="tel"
+            name="phone"
+            value={formData.phone}
+            onChange={handleChange}
+            onBlur={() => handleBlur('phone')}
+            placeholder="+1 (555) 000-0000"
+            className={`w-full px-3 py-2 sm:px-6 sm:py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
+              errors.phone && touched.phone
+                ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+            }`}
+          />
+        </div>
 
-      <div className="space-y-4">
-        <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-          Subject *
-        </label>
-        <select
-          name="subject"
-          value={formData.subject}
-          onChange={handleChange}
-          onBlur={() => handleBlur('subject')}
-          className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-            errors.subject && touched.subject
-              ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-          }`}
+        <div className="space-y-4">
+          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+            Subject *
+          </label>
+          <select
+            name="subject"
+            value={formData.subject}
+            onChange={handleChange}
+            onBlur={() => handleBlur('subject')}
+            className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
+              errors.subject && touched.subject
+                ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+            }`}
+          >
+            <option value="">Select a subject...</option>
+            <option value="booking">Booking Inquiry</option>
+            <option value="collaboration">Collaboration</option>
+            <option value="general">General Question</option>
+            <option value="coaching">Coaching Information</option>
+          </select>
+          {errors.subject && touched.subject && (
+            <p className="text-red-500 text-sm flex items-center gap-2">
+              <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+              {errors.subject}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+            Message *
+          </label>
+          <textarea
+            name="message"
+            value={formData.message}
+            onChange={handleChange}
+            onBlur={() => handleBlur('message')}
+            rows={8}
+            placeholder="Tell me about your inquiry..."
+            className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all resize-none ${
+              errors.message && touched.message
+                ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+            }`}
+          />
+          {errors.message && touched.message && (
+            <p className="text-red-500 text-sm flex items-center gap-2">
+              <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+              {errors.message}
+            </p>
+          )}
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full bg-primary text-primary-foreground px-10 py-5 rounded-full font-bold text-lg hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
-          <option value="">Select a subject...</option>
-          <option value="booking">Booking Inquiry</option>
-          <option value="collaboration">Collaboration</option>
-          <option value="general">General Question</option>
-          <option value="coaching">Coaching Information</option>
-        </select>
-        {errors.subject && touched.subject && (
-          <p className="text-red-500 text-sm flex items-center gap-2">
-            <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-            {errors.subject}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-          Message *
-        </label>
-        <textarea
-          name="message"
-          value={formData.message}
-          onChange={handleChange}
-          onBlur={() => handleBlur('message')}
-          rows={8}
-          placeholder="Tell me about your inquiry..."
-          className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all resize-none ${
-            errors.message && touched.message
-              ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-          }`}
-        />
-        {errors.message && touched.message && (
-          <p className="text-red-500 text-sm flex items-center gap-2">
-            <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-            {errors.message}
-          </p>
-        )}
-      </div>
-
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="w-full bg-primary text-primary-foreground px-10 py-5 rounded-full font-bold text-lg hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-      >
-        {isSubmitting ? (
-          <>
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-foreground"></div>
-            <span>Sending Message...</span>
-          </>
-        ) : (
-          <>
-            <Icon name="PaperAirplaneIcon" size={24} />
-            <span>Send Message</span>
-          </>
-        )}
-      </button>
-    </form>
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-foreground"></div>
+              <span>Sending Message...</span>
+            </>
+          ) : (
+            <>
+              <Icon name="PaperAirplaneIcon" size={24} />
+              <span>Send Message</span>
+            </>
+          )}
+        </button>
+      </form>
+    </>
   );
 }

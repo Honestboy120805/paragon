@@ -226,7 +226,7 @@ export default function AdminBookingsPage() {
       const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', selectedBooking.id);
       if (error) throw error;
       addToast('success', 'Booking cancelled successfully!');
-      const cancelled = { ...selectedBooking };
+      const cancelled = { ...selectedBooking, cancellationReason: cancellationReason };
       setShowCancelModal(false);
       setSelectedBooking(null);
       setCancellationReason('');

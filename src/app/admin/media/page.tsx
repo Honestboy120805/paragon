@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import AppImage from '@/components/ui/AppImage';
@@ -16,6 +16,36 @@ interface MediaItem {
   is_featured: boolean;
   display_order: number;
   created_at: string;
+}
+
+interface ToastMessage {
+  id: number;
+  type: 'success' | 'error' | 'warning';
+  message: string;
+}
+
+function Toast({ toasts, onRemove }: { toasts: ToastMessage[]; onRemove: (id: number) => void }) {
+  return (
+    <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium pointer-events-auto
+            animate-[slideInRight_0.3s_ease-out]
+            ${toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : 'bg-yellow-600'}`}
+        >
+          <Icon
+            name={toast.type === 'success' ? 'CheckCircleIcon' : toast.type === 'error' ? 'XCircleIcon' : 'ExclamationTriangleIcon'}
+            className="w-5 h-5 flex-shrink-0"
+          />
+          <span>{toast.message}</span>
+          <button onClick={() => onRemove(toast.id)} className="ml-2 hover:opacity-75">
+            <Icon name="XMarkIcon" className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function AdminMediaPage() {
@@ -34,9 +64,21 @@ export default function AdminMediaPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedThumbnail, setSelectedThumbnail] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; url: string } | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
+
+  const addToast = useCallback((type: ToastMessage['type'], message: string) => {
+  const id = Date.now();
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+  }, []);
+
+  const removeToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   useEffect(() => {
     fetchMedia();
@@ -100,7 +142,7 @@ export default function AdminMediaPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
-      alert('Please select a file to upload');
+      addToast('warning', 'Please select a file to upload');
       return;
     }
 
@@ -133,10 +175,10 @@ export default function AdminMediaPage() {
 
       resetForm();
       fetchMedia();
-      alert('Media uploaded successfully!');
+      addToast('success', 'Media uploaded successfully!');
     } catch (error: any) {
       console.error('Error uploading media:', error);
-      alert(`Upload failed: ${error.message}`);
+      addToast('error', `Upload failed: ${error.message}`);
     } finally {
       setUploading(false);
       setUploadProgress('');
@@ -159,11 +201,11 @@ export default function AdminMediaPage() {
     if (thumbnailInputRef.current) thumbnailInputRef.current.value = '';
   };
 
-  const deleteMedia = async (id: string, url: string) => {
-    if (!confirm('Are you sure you want to delete this media item?')) return;
-
+    const deleteMedia = async () => {
+    if (!deleteTarget) return;
+    const { id, url } = deleteTarget;
+    setDeleteTarget(null);
     try {
-      // Try to delete from storage if it's a Supabase storage URL
       if (url.includes('media-uploads')) {
         const path = url.split('/media-uploads/')[1];
         if (path) {
@@ -173,8 +215,10 @@ export default function AdminMediaPage() {
       const { error } = await supabase.from('media_gallery').delete().eq('id', id);
       if (error) throw error;
       fetchMedia();
+      addToast('success', 'Media item deleted successfully!');
     } catch (error) {
       console.error('Error deleting media:', error);
+      addToast('error', 'Failed to delete media item.');
     }
   };
 
@@ -202,6 +246,41 @@ export default function AdminMediaPage() {
 
   return (
     <div className="space-y-6">
+
+            <Toast toasts={toasts} onRemove={removeToast} />
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Icon name="TrashIcon" className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Delete Media</h3>
+                <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">Are you sure you want to delete this media item?</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 border border-muted-foreground/20 rounded-lg hover:bg-accent/10 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteMedia}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-4xl font-serif font-bold">Media Gallery</h1>
@@ -419,7 +498,7 @@ export default function AdminMediaPage() {
                     <Icon name="EyeIcon" className="w-4 h-4" />
                   </a>
                   <button
-                    onClick={() => deleteMedia(item.id, item.url)}
+                    onClick={() => setDeleteTarget({ id: item.id, url: item.url })}
                     className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
                   >
                     <Icon name="TrashIcon" className="w-4 h-4" />

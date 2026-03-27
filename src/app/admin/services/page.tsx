@@ -18,6 +18,36 @@ interface Service {
   display_order: number;
 }
 
+interface ToastMessage {
+  id: number;
+  type: 'success' | 'error' | 'warning';
+  message: string;
+}
+
+function Toast({ toasts, onRemove }: { toasts: ToastMessage[]; onRemove: (id: number) => void }) {
+  return (
+    <div className="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium pointer-events-auto
+            animate-[slideInRight_0.3s_ease-out]
+            ${toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : 'bg-yellow-600'}`}
+        >
+          <Icon
+            name={toast.type === 'success' ? 'CheckCircleIcon' : toast.type === 'error' ? 'XCircleIcon' : 'ExclamationTriangleIcon'}
+            className="w-5 h-5 flex-shrink-0"
+          />
+          <span>{toast.message}</span>
+          <button onClick={() => onRemove(toast.id)} className="ml-2 hover:opacity-75">
+            <Icon name="XMarkIcon" className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface DropZoneProps {
   accept: string;
   label: string;
@@ -113,6 +143,8 @@ export default function AdminServicesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     category: 'music',
@@ -221,11 +253,12 @@ export default function AdminServicesPage() {
         if (error) throw error;
       }
 
+      addToast(editingId ? 'Service updated successfully!' : 'Service added successfully!', 'success');
       resetForm();
       fetchServices();
     } catch (error: any) {
       console.error('Error saving service:', error);
-      alert(`Failed to save service: ${error.message}`);
+      addToast(`Failed to save service: ${error.message}`, 'error');
     } finally {
       setUploading(false);
       setUploadProgress('');
@@ -250,13 +283,15 @@ export default function AdminServicesPage() {
   };
 
   const deleteService = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this service?')) return;
+    setDeleteConfirmId(null);
     try {
       const { error } = await supabase.from('services').delete().eq('id', id);
       if (error) throw error;
+      addToast('Service deleted successfully.', 'success');
       fetchServices();
     } catch (error) {
       console.error('Error deleting service:', error);
+      addToast('Failed to delete service. Please try again.', 'error');
     }
   };
 
@@ -292,6 +327,16 @@ export default function AdminServicesPage() {
     setShowForm(false);
   };
 
+  const addToast = (message: string, type: ToastMessage['type'] = 'success') => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => removeToast(id), 4000);
+  };
+
+  const removeToast = (id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -302,6 +347,41 @@ export default function AdminServicesPage() {
 
   return (
     <div className="space-y-6">
+
+        <Toast toasts={toasts} onRemove={removeToast} />
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Icon name="TrashIcon" className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Delete Service</h3>
+                <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700 mb-6">Are you sure you want to delete this service?</p>
+            <div className="flex space-x-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-4 py-2 border border-muted-foreground/20 rounded-lg hover:bg-accent/10 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteService(deleteConfirmId)}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-4xl font-serif font-bold">Services</h1>
@@ -507,7 +587,7 @@ export default function AdminServicesPage() {
                       {service.is_active ? 'Deactivate' : 'Activate'}
                     </button>
                     <button
-                      onClick={() => deleteService(service.id)}
+                      onClick={() => setDeleteConfirmId(service.id)}
                       className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
                     >
                       Delete

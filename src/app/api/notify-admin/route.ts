@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import { clientConfirmationEmail, adminNewBookingEmail, clientBookingConfirmedEmail, clientBookingCompletedEmail, clientBookingCancelledEmail } from '@/lib/email/template';
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -26,15 +27,15 @@ export async function POST(req: NextRequest) {
 
     const brandColor = '#0ea5e9';
 
-    const emailHeader = `
+    const legacyEmailHeader = `
       <div style="background-color: ${brandColor}; padding: 40px 20px; text-align: center;">
         <h1 style="color: white; margin: 0; font-size: 32px; font-family: serif;">Paragon</h1>
       </div>
     `;
 
-    const emailFooter = `
+    const legacyEmailFooter = `
       <div style="background-color: #f3f4f6; padding: 30px 20px; text-align: center; margin-top: 40px;">
-        <p style="color: #6b7280; margin: 0; font-size: 14px;">© 2026 Paragon. All rights reserved. Zenna.</p>
+         <p style="color: #6b7280; margin: 0; font-size: 14px;">© ${new Date().getFullYear()} Paragon. All rights reserved. Zenna</p>
       </div>
     `;
 
@@ -42,34 +43,86 @@ export async function POST(req: NextRequest) {
     let html = '';
     let toEmail = ADMIN_EMAIL;
 
-    if (type === 'admin_new_booking' && booking) {
+ // ── Branded: Client booking confirmation ──────────────────────────────
+    if (type === 'client_booking_confirmation' && booking) {
+      toEmail = booking.email;
+      const template = clientConfirmationEmail({
+        confirmationNumber: booking.confirmationNumber || booking.id || 'N/A',
+        name: booking.name,
+        email: booking.email,
+        serviceLabel: booking.service_type,
+        date: booking.event_date || '',
+        timeSlot: booking.event_location || '',
+        price: booking.price || '',
+        phone: booking.phone,
+        message: booking.message,
+      });
+      subject = template.subject;
+      html = template.html;
+
+    // ── Branded: Admin new booking notification ───────────────────────────
+    } else if (type === 'admin_new_booking' && booking) {
       toEmail = ADMIN_EMAIL;
-      subject = `📅 New Booking Request: ${booking.service_type} - ${booking.name}`;
-      html = `
-        <!DOCTYPE html><html><head><meta charset="utf-8"></head>
-        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #ffffff;">
-          <div style="max-width: 600px; margin: 0 auto;">
-            ${emailHeader}
-            <div style="padding: 40px 20px;">
-              <h2 style="color: #1f2937; margin: 0 0 20px 0;">📅 New Booking Request</h2>
-              <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">A new booking has been submitted. Here are the details:</p>
-              <div style="background-color: #f9fafb; border-left: 4px solid ${brandColor}; padding: 20px; margin: 0 0 30px 0;">
-                <p style="margin: 0 0 10px 0; color: #1f2937;"><strong>Client:</strong> ${booking.name}</p>
-                <p style="margin: 0 0 10px 0; color: #1f2937;"><strong>Email:</strong> ${booking.email}</p>
-                <p style="margin: 0 0 10px 0; color: #1f2937;"><strong>Phone:</strong> ${booking.phone || 'N/A'}</p>
-                <p style="margin: 0 0 10px 0; color: #1f2937;"><strong>Service:</strong> ${booking.service_type}</p>
-                <p style="margin: 0 0 10px 0; color: #1f2937;"><strong>Event Date:</strong> ${booking.event_date ? new Date(booking.event_date).toLocaleDateString() : 'N/A'}</p>
-                <p style="margin: 0 0 10px 0; color: #1f2937;"><strong>Time:</strong> ${booking.event_location || 'N/A'}</p>
-                ${booking.message ? `<p style="margin: 0; color: #1f2937;"><strong>Message:</strong> ${booking.message}</p>` : ''}
-              </div>
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="https://paragondelaftadian.com/admin/bookings" style="display: inline-block; background-color: ${brandColor}; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold;">Manage Bookings</a>
-              </div>
-            </div>
-            ${emailFooter}
-          </div>
-        </body></html>
-      `;
+      const template = adminNewBookingEmail({
+        confirmationNumber: booking.confirmationNumber || booking.id || 'N/A',
+        name: booking.name,
+        email: booking.email,
+        phone: booking.phone,
+        serviceLabel: booking.service_type,
+        date: booking.event_date || '',
+        timeSlot: booking.event_location || '',
+        price: booking.price || '',
+        message: booking.message,
+        bookingId: booking.id,
+      });
+      subject = template.subject;
+      html = template.html;
+
+      // ── Branded: Admin confirms booking → email client ────────────────────
+    } else if (type === 'confirmation' && booking) {
+      toEmail = booking.email;
+      const template = clientBookingConfirmedEmail({
+        name: booking.name,
+        email: booking.email,
+        serviceLabel: booking.service_type,
+        date: booking.event_date || '',
+        timeSlot: booking.event_location || '',
+        price: booking.price || '',
+        bookingId: booking.id,
+      });
+      subject = template.subject;
+      html = template.html;
+
+    // ── Branded: Admin cancels booking → email client ─────────────────────
+    } else if (type === 'cancellation' && booking) {
+      toEmail = booking.email;
+      const template = clientBookingCancelledEmail({
+        name: booking.name,
+        email: booking.email,
+        serviceLabel: booking.service_type,
+        date: booking.event_date || '',
+        timeSlot: booking.event_location || '',
+        bookingId: booking.id,
+        cancellationReason: booking.cancellationReason || '',
+      });
+      subject = template.subject;
+      html = template.html;
+
+    // ── Branded: Admin completes booking → email client ───────────────────
+    } else if (type === 'status_update' && booking) {
+      toEmail = booking.email;
+      const template = clientBookingCompletedEmail({
+        name: booking.name,
+        email: booking.email,
+        serviceLabel: booking.service_type,
+        date: booking.event_date || '',
+        timeSlot: booking.event_location || '',
+        bookingId: booking.id,
+      });
+      subject = template.subject;
+      html = template.html;
+
+    // ── Legacy: Admin contact notification ───────────────────────────────
     } else if (type === 'admin_new_contact' && contact) {
       toEmail = ADMIN_EMAIL;
       subject = `📬 New Contact Message: ${contact.subject}`;
@@ -77,7 +130,7 @@ export async function POST(req: NextRequest) {
         <!DOCTYPE html><html><head><meta charset="utf-8"></head>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #ffffff;">
           <div style="max-width: 600px; margin: 0 auto;">
-            ${emailHeader}
+            ${legacyEmailHeader}
             <div style="padding: 40px 20px;">
               <h2 style="color: #1f2937; margin: 0 0 20px 0;">📬 New Contact Message Received</h2>
               <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">Someone has sent you a message through the contact form:</p>
@@ -92,10 +145,11 @@ export async function POST(req: NextRequest) {
                 <a href="https://paragondelaftadian.com/admin/contacts" style="display: inline-block; background-color: ${brandColor}; color: white; padding: 15px 40px; text-decoration: none; border-radius: 50px; font-weight: bold;">View in Dashboard</a>
               </div>
             </div>
-            ${emailFooter}
+            ${legacyEmailFooter}
           </div>
         </body></html>
       `;
+      // ── Legacy: Booking confirmed by admin ───────────────────────────────
     } else if (type === 'confirmation' && booking) {
       toEmail = booking.email;
       subject = `✅ Booking Confirmed — ${booking.service_type}`;
@@ -103,7 +157,7 @@ export async function POST(req: NextRequest) {
         <!DOCTYPE html><html><head><meta charset="utf-8"></head>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #ffffff;">
           <div style="max-width: 600px; margin: 0 auto;">
-            ${emailHeader}
+            ${legacyEmailHeader}
             <div style="padding: 40px 20px;">
               <h2 style="color: #1f2937; margin: 0 0 20px 0;">✅ Booking Confirmed!</h2>
               <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">Hi ${booking.name},</p>
@@ -116,10 +170,11 @@ export async function POST(req: NextRequest) {
               </div>
               <p style="color: #4b5563; line-height: 1.6;">I'm looking forward to working with you! If you have any questions, feel free to reach out.</p>
             </div>
-            ${emailFooter}
+            ${legacyEmailFooter}
           </div>
         </body></html>
       `;
+      // ── Legacy: Cancellation ─────────────────────────────────────────────
     } else if (type === 'cancellation' && booking) {
       toEmail = booking.email;
       subject = `Booking Cancellation — ${booking.service_type}`;
@@ -127,7 +182,7 @@ export async function POST(req: NextRequest) {
         <!DOCTYPE html><html><head><meta charset="utf-8"></head>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #ffffff;">
           <div style="max-width: 600px; margin: 0 auto;">
-            ${emailHeader}
+            ${legacyEmailHeader}
             <div style="padding: 40px 20px;">
               <h2 style="color: #1f2937; margin: 0 0 20px 0;">Booking Cancelled</h2>
               <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">Hi ${booking.name},</p>
@@ -139,10 +194,11 @@ export async function POST(req: NextRequest) {
               </div>
               <p style="color: #4b5563; line-height: 1.6;">We're sorry we couldn't work together this time. Feel free to book again in the future!</p>
             </div>
-            ${emailFooter}
+            ${legacyEmailFooter}
           </div>
         </body></html>
       `;
+      // ── Legacy: Status update ────────────────────────────────────────────
     } else if (type === 'status_update' && booking) {
       toEmail = booking.email;
       subject = `Booking Status Update — ${booking.status}`;
@@ -150,7 +206,7 @@ export async function POST(req: NextRequest) {
         <!DOCTYPE html><html><head><meta charset="utf-8"></head>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #ffffff;">
           <div style="max-width: 600px; margin: 0 auto;">
-            ${emailHeader}
+            ${legacyEmailHeader}
             <div style="padding: 40px 20px;">
               <h2 style="color: #1f2937; margin: 0 0 20px 0;">Booking Status Update</h2>
               <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">Hi ${booking.name},</p>
@@ -161,10 +217,11 @@ export async function POST(req: NextRequest) {
                 <p style="margin: 0; color: #1f2937;"><strong>New Status:</strong> <span style="text-transform: capitalize;">${booking.status}</span></p>
               </div>
             </div>
-            ${emailFooter}
+            ${legacyEmailFooter}
           </div>
         </body></html>
       `;
+      // ── Legacy: Reminder ────────────────────────────────────────────────
     } else if (type === 'reminder' && booking) {
       toEmail = booking.email;
       subject = `📅 Event Reminder — ${booking.service_type}`;
@@ -172,7 +229,7 @@ export async function POST(req: NextRequest) {
         <!DOCTYPE html><html><head><meta charset="utf-8"></head>
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #ffffff;">
           <div style="max-width: 600px; margin: 0 auto;">
-            ${emailHeader}
+            ${legacyEmailHeader}
             <div style="padding: 40px 20px;">
               <h2 style="color: #1f2937; margin: 0 0 20px 0;">📅 Event Reminder</h2>
               <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">Hi ${booking.name},</p>
@@ -184,10 +241,11 @@ export async function POST(req: NextRequest) {
               </div>
               <p style="color: #4b5563; line-height: 1.6;">I'm excited to work with you! Please let me know if you need any last-minute adjustments.</p>
             </div>
-            ${emailFooter}
+            ${legacyEmailFooter}
           </div>
         </body></html>
       `;
+
     } else {
       return NextResponse.json({ error: 'Invalid notification type or missing data' }, { status: 400 });
     }

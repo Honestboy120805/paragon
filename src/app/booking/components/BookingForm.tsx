@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Icon from '@/components/ui/AppIcon';
 
 interface FormData {
@@ -24,7 +25,44 @@ interface FieldErrors {
   termsAccepted?: string;
 }
 
+interface ToastMessage {
+  id: string;
+  type: 'success' | 'error' | 'warning';
+  message: string;
+}
+
+function Toast({ toasts, removeToast }: { toasts: ToastMessage[]; removeToast: (id: string) => void }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          className="pointer-events-auto flex items-start gap-3 min-w-[300px] max-w-sm px-5 py-4 rounded-2xl shadow-lg text-sm font-medium"
+          style={{
+            animation: 'slideInRight 0.3s ease-out',
+            background: toast.type === 'success' ? '#22c55e' : toast.type === 'error' ? '#ef4444' : '#f59e0b',
+            color: '#fff',
+          }}
+        >
+          <span className="mt-0.5 shrink-0">
+            {toast.type === 'success' && <Icon name="CheckCircleIcon" size={20} variant="solid" />}
+            {toast.type === 'error' && <Icon name="XCircleIcon" size={20} variant="solid" />}
+            {toast.type === 'warning' && <Icon name="ExclamationCircleIcon" size={20} variant="solid" />}
+          </span>
+          <span className="flex-1">{toast.message}</span>
+          <button onClick={() => removeToast(toast.id)} className="shrink-0 opacity-80 hover:opacity-100 transition-opacity">
+            <Icon name="XMarkIcon" size={16} variant="solid" />
+          </button>
+        </div>
+      ))}
+      <style>{`@keyframes slideInRight { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+    </div>
+  );
+}
+
 export default function BookingForm() {
+  const router = useRouter();
   const [isHydrated, setIsHydrated] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     service: '',
@@ -40,8 +78,19 @@ export default function BookingForm() {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [estimatedPrice, setEstimatedPrice] = useState('');
+  // const [estimatedPrice, setEstimatedPrice] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = (type: ToastMessage['type'], message: string) => {
+  const id = Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => removeToast(id), 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   useEffect(() => {
     setIsHydrated(true);
@@ -149,6 +198,10 @@ export default function BookingForm() {
 
       if (error) throw error;
 
+      // Generate a short confirmation reference from the booking ID
+      const confirmationRef = bookingId
+        ? `PDL-${String(bookingId).slice(0, 8).toUpperCase()}`
+        : `PDL-${Date.now().toString(36).toUpperCase()}`;
       // Send admin notification email
       try {
         await fetch('/api/notify-admin', {
@@ -158,6 +211,7 @@ export default function BookingForm() {
             type: 'admin_new_booking',
             booking: {
               id: bookingId,
+              confirmationNumber: confirmationRef,
               name: formData.name,
               email: formData.email,
               phone: formData.phone,
@@ -174,9 +228,48 @@ export default function BookingForm() {
         console.error('Admin notification email error:', adminEmailError);
       }
 
-      setIsSubmitted(true);
+      
+      // Send client confirmation email
+      try {
+        await fetch('/api/notify-admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'client_booking_confirmation',
+            booking: {
+              confirmationNumber: confirmationRef,
+              name: formData.name,
+              email: formData.email,
+              phone: formData.phone,
+              service_type: services.find((s) => s.value === formData.service)?.label || formData.service,
+              event_date: formData.date,
+              event_location: formData.time
+                ? timeSlots.find((t) => t.value === formData.time)?.label || formData.time
+                : 'TBD',
+              message: formData.message,
+            },
+          }),
+        });
+      } catch (clientEmailError) {
+        console.error('Client confirmation email error:', clientEmailError);
+      }
+
+      const selectedService = services.find((s) => s.value === formData.service);
+      const selectedTimeSlot = timeSlots.find((t) => t.value === formData.time);
+
+      const params = new URLSearchParams({
+        ref: confirmationRef,
+        name: formData.name,
+        email: formData.email,
+        service: formData.service,
+        serviceLabel: selectedService?.label || formData.service,
+        date: formData.date,
+        time: selectedTimeSlot?.label || formData.time,
+      });
+
+      router.push(`/booking/confirmation?${params.toString()}`);
     } catch (err: any) {
-      setSubmitError(err.message || 'Failed to submit booking. Please try again.');
+      addToast('error', err.message || 'Failed to submit booking. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -220,231 +313,234 @@ export default function BookingForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card rounded-[60px] p-12 md:p-20 shadow-sm border border-border space-y-12">
-      {/* Service Selection */}
-      <div className="space-y-4">
-        <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-          Select Service *
-        </label>
-        <select
-          name="service"
-          value={formData.service}
-          onChange={handleChange}
-          onBlur={() => handleBlur('service')}
-          className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-            errors.service && touched.service
-              ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-          }`}
-        >
-          <option value="">Choose a service...</option>
-          {services.map((service) => (
-            <option key={service.id} value={service.value}>
-              {service.label}
-            </option>
-          ))}
-        </select>
-        {errors.service && touched.service && (
-          <p className="text-red-500 text-sm flex items-center gap-2">
-            <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-            {errors.service}
-          </p>
-        )}
-      </div>
-
-      {/* Date & Time */}
-      <div className="grid md:grid-cols-2 gap-8">
+    <>
+      <Toast toasts={toasts} removeToast={removeToast} />
+      <form onSubmit={handleSubmit} className="bg-card rounded-[60px] p-12 md:p-20 shadow-sm border border-border space-y-12">
+        {/* Service Selection */}
         <div className="space-y-4">
           <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-            Preferred Date *
-          </label>
-          <input
-            type="date"
-            name="date"
-            value={formData.date}
-            onChange={handleChange}
-            onBlur={() => handleBlur('date')}
-            className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-              errors.date && touched.date
-                ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-            }`}
-          />
-          {errors.date && touched.date && (
-            <p className="text-red-500 text-sm flex items-center gap-2">
-              <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-              {errors.date}
-            </p>
-          )}
-        </div>
-        <div className="space-y-4">
-          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-            Preferred Time *
+            Select Service *
           </label>
           <select
-            name="time"
-            value={formData.time}
+            name="service"
+            value={formData.service}
             onChange={handleChange}
-            onBlur={() => handleBlur('time')}
+            onBlur={() => handleBlur('service')}
             className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-              errors.time && touched.time
+              errors.service && touched.service
                 ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
             }`}
           >
-            <option value="">Choose time slot...</option>
-            {timeSlots.map((slot) => (
-              <option key={slot.id} value={slot.value}>
-                {slot.label}
+            <option value="">Choose a service...</option>
+            {services.map((service) => (
+              <option key={service.id} value={service.value}>
+                {service.label}
               </option>
             ))}
           </select>
-          {errors.time && touched.time && (
+          {errors.service && touched.service && (
             <p className="text-red-500 text-sm flex items-center gap-2">
               <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-              {errors.time}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Client Details */}
-      <div className="space-y-8">
-        <div className="space-y-4">
-          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-            Full Name *
-          </label>
-          <input
-            type="text"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            onBlur={() => handleBlur('name')}
-            placeholder="John Doe"
-            className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-              errors.name && touched.name
-                ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
-            }`}
-          />
-          {errors.name && touched.name && (
-            <p className="text-red-500 text-sm flex items-center gap-2">
-              <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-              {errors.name}
+              {errors.service}
             </p>
           )}
         </div>
 
+        {/* Date & Time */}
         <div className="grid md:grid-cols-2 gap-8">
           <div className="space-y-4">
             <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-              Email Address *
+              Preferred Date *
             </label>
             <input
-              type="email"
-              name="email"
-              value={formData.email}
+              type="date"
+              name="date"
+              value={formData.date}
               onChange={handleChange}
-              onBlur={() => handleBlur('email')}
-              placeholder="john@example.com"
+              onBlur={() => handleBlur('date')}
               className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-                errors.email && touched.email
+                errors.date && touched.date
                   ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
               }`}
             />
-            {errors.email && touched.email && (
+            {errors.date && touched.date && (
               <p className="text-red-500 text-sm flex items-center gap-2">
                 <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-                {errors.email}
+                {errors.date}
               </p>
             )}
           </div>
           <div className="space-y-4">
             <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-              Phone Number *
+              Preferred Time *
             </label>
-            <input
-              type="tel"
-              name="phone"
-              value={formData.phone}
+            <select
+              name="time"
+              value={formData.time}
               onChange={handleChange}
-              onBlur={() => handleBlur('phone')}
-              placeholder="+1 (641) 954-2429"
+              onBlur={() => handleBlur('time')}
               className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
-                errors.phone && touched.phone
+                errors.time && touched.time
                   ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
               }`}
-            />
-            {errors.phone && touched.phone && (
+            >
+              <option value="">Choose time slot...</option>
+              {timeSlots.map((slot) => (
+                <option key={slot.id} value={slot.value}>
+                  {slot.label}
+                </option>
+              ))}
+            </select>
+            {errors.time && touched.time && (
               <p className="text-red-500 text-sm flex items-center gap-2">
                 <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-                {errors.phone}
+                {errors.time}
               </p>
             )}
           </div>
         </div>
 
-        <div className="space-y-4">
-          <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
-            Additional Details
-          </label>
-          <textarea
-            name="message"
-            value={formData.message}
-            onChange={handleChange}
-            rows={6}
-            placeholder="Tell me about your event, special requirements, or any questions you have..."
-            className="w-full px-6 py-4 rounded-2xl border border-border bg-input text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-accent transition-all resize-none"
-          />
-        </div>
-      </div>
+        {/* Client Details */}
+        <div className="space-y-8">
+          <div className="space-y-4">
+            <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+              Full Name *
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              onBlur={() => handleBlur('name')}
+              placeholder="John Doe"
+              className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
+                errors.name && touched.name
+                  ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+              }`}
+            />
+            {errors.name && touched.name && (
+              <p className="text-red-500 text-sm flex items-center gap-2">
+                <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+                {errors.name}
+              </p>
+            )}
+          </div>
 
-      {/* Terms */}
-      <div className="space-y-2">
-        <div className="flex items-start gap-4">
-          <input
-            type="checkbox"
-            name="termsAccepted"
-            checked={formData.termsAccepted}
-            onChange={handleChange}
-            onBlur={() => handleBlur('termsAccepted')}
-            className={`mt-1 w-5 h-5 rounded border text-accent focus:ring-accent ${
-              errors.termsAccepted && touched.termsAccepted ? 'border-red-500' : 'border-border'
-            }`}
-          />
-          <label className="text-sm text-muted-foreground">
-            I agree to the terms and conditions and understand that this is a booking request subject
-            to availability confirmation.
-          </label>
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+                Email Address *
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                onBlur={() => handleBlur('email')}
+                placeholder="john@example.com"
+                className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
+                  errors.email && touched.email
+                    ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+                }`}
+              />
+              {errors.email && touched.email && (
+                <p className="text-red-500 text-sm flex items-center gap-2">
+                  <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+                  {errors.email}
+                </p>
+              )}
+            </div>
+            <div className="space-y-4">
+              <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+                Phone Number *
+              </label>
+              <input
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleChange}
+                onBlur={() => handleBlur('phone')}
+                placeholder="+1 (641) 954-2429"
+                className={`w-full px-6 py-4 rounded-2xl border bg-input text-foreground font-medium focus:outline-none focus:ring-2 transition-all ${
+                  errors.phone && touched.phone
+                    ? 'border-red-500 focus:ring-red-500' :'border-border focus:ring-accent'
+                }`}
+              />
+              {errors.phone && touched.phone && (
+                <p className="text-red-500 text-sm flex items-center gap-2">
+                  <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+                  {errors.phone}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <label className="block text-sm font-bold uppercase tracking-widest text-muted-foreground">
+              Additional Details
+            </label>
+            <textarea
+              name="message"
+              value={formData.message}
+              onChange={handleChange}
+              rows={6}
+              placeholder="Tell me about your event, special requirements, or any questions you have..."
+              className="w-full px-6 py-4 rounded-2xl border border-border bg-input text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-accent transition-all resize-none"
+            />
+          </div>
         </div>
-        {errors.termsAccepted && touched.termsAccepted && (
-          <p className="text-red-500 text-sm flex items-center gap-2 ml-9">
+
+        {/* Terms */}
+        <div className="space-y-2">
+          <div className="flex items-start gap-4">
+            <input
+              type="checkbox"
+              name="termsAccepted"
+              checked={formData.termsAccepted}
+              onChange={handleChange}
+              onBlur={() => handleBlur('termsAccepted')}
+              className={`mt-1 w-5 h-5 rounded border text-accent focus:ring-accent ${
+                errors.termsAccepted && touched.termsAccepted ? 'border-red-500' : 'border-border'
+              }`}
+            />
+            <label className="text-sm text-muted-foreground">
+              I agree to the terms and conditions and understand that this is a booking request subject
+              to availability confirmation.
+            </label>
+          </div>
+          {errors.termsAccepted && touched.termsAccepted && (
+            <p className="text-red-500 text-sm flex items-center gap-2 ml-9">
+              <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
+              {errors.termsAccepted}
+            </p>
+          )}
+        </div>
+
+        {/* Submit Button */}
+        {submitError && (
+          <p className="text-red-500 text-sm flex items-center gap-2 mb-3">
             <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-            {errors.termsAccepted}
+            {submitError}
           </p>
         )}
-      </div>
-
-      {/* Submit Button */}
-      {submitError && (
-        <p className="text-red-500 text-sm flex items-center gap-2 mb-3">
-          <Icon name="ExclamationCircleIcon" size={16} variant="solid" />
-          {submitError}
-        </p>
-      )}
-      <button
-        type="submit"
-        disabled={isSubmitting || !formData.termsAccepted}
-        className="w-full bg-primary text-primary-foreground px-10 py-5 rounded-full font-bold text-lg hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-      >
-        {isSubmitting ? (
-          <>
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-foreground"></div>
-            <span>Submitting Booking...</span>
-          </>
-        ) : (
-          <>
-            <Icon name="CalendarIcon" size={24} />
-            <span>Submit Booking Request</span>
-          </>
-        )}
-      </button>
-    </form>
+        <button
+          type="submit"
+          disabled={isSubmitting || !formData.termsAccepted}
+          className="w-full bg-primary text-primary-foreground px-10 py-5 rounded-full font-bold text-lg hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+        >
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-foreground"></div>
+              <span>Submitting Booking...</span>
+            </>
+          ) : (
+            <>
+              <Icon name="CalendarIcon" size={24} />
+              <span>Submit Booking Request</span>
+            </>
+          )}
+        </button>
+      </form>
+    </>
   );
 }

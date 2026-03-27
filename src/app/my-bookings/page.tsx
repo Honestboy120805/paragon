@@ -109,7 +109,6 @@ export default function MyBookingsPage() {
         p_email: userEmail,
       });
 
-
       if (error) throw error;
       setBookings(data || []);
     } catch (error) {
@@ -179,7 +178,7 @@ export default function MyBookingsPage() {
 
       if (error) throw error;
 
-      addToast('success', 'Booking cancelled successfully!');
+      addToast('success', 'Booking cancelled successfully.');
       setShowCancelModal(false);
       setSelectedBooking(null);
       setCancelReason('');
@@ -329,11 +328,11 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'confirmed': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
+      case 'confirmed': return 'bg-blue-100 text-blue-800 border border-blue-300';
+      case 'completed': return 'bg-green-100 text-green-800 border border-green-300';
+      case 'cancelled': return 'bg-red-100 text-red-800 border border-red-300';
+      default: return 'bg-gray-100 text-gray-800 border border-gray-300';
     }
   };
 
@@ -345,6 +344,32 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
       case 'cancelled': return 'XCircleIcon';
       default: return 'QuestionMarkCircleIcon';
     }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'pending': return 'Pending Review';
+      case 'confirmed': return 'Confirmed';
+      case 'completed': return 'Completed';
+      case 'cancelled': return 'Cancelled';
+      default: return status;
+    }
+  };
+
+  const timelineSteps = [
+    { key: 'pending', label: 'Submitted', icon: 'ClockIcon', description: 'Booking received' },
+    { key: 'confirmed', label: 'Confirmed', icon: 'CheckCircleIcon', description: 'Booking approved' },
+    { key: 'completed', label: 'Completed', icon: 'CheckBadgeIcon', description: 'Service delivered' },
+  ];
+
+  const getTimelineStepState = (stepKey: string, bookingStatus: string): 'completed' | 'active' | 'upcoming' => {
+    if (bookingStatus === 'cancelled') return 'upcoming';
+    const order = ['pending', 'confirmed', 'completed'];
+    const stepIdx = order.indexOf(stepKey);
+    const statusIdx = order.indexOf(bookingStatus);
+    if (stepIdx < statusIdx) return 'completed';
+    if (stepIdx === statusIdx) return 'active';
+    return 'upcoming';
   };
 
   if (!emailSubmitted) {
@@ -381,7 +406,7 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
           <div className="mt-5 sm:mt-6 text-center">
             <Link href="/booking" className="text-sm sm:text-base text-primary hover:underline flex items-center justify-center gap-2">
               <Icon name="PlusCircleIcon" className="w-4 h-4 sm:w-5 sm:h-5" />
-              Make A New Booking
+              Make a New Booking
             </Link>
           </div>
         </div>
@@ -435,40 +460,139 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
         ) : (
           <div className="space-y-6">
             {bookings.map((booking) => (
-              <div key={booking.id} className="bg-white rounded-lg shadow-md p-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Icon name={getStatusIcon(booking.status)} className="w-6 h-6 text-primary" />
-                      <h3 className="text-xl font-bold">{booking.service_type}</h3>
+              <div key={booking.id} className="bg-white rounded-xl shadow-md overflow-hidden">
+                {/* Card Header with status badge */}
+                <div className={`px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${
+                  booking.status === 'pending' ? 'bg-yellow-50 border-b border-yellow-200' :
+                  booking.status === 'confirmed' ? 'bg-blue-50 border-b border-blue-200' :
+                  booking.status === 'completed'? 'bg-green-50 border-b border-green-200' : 'bg-red-50 border-b border-red-200'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <Icon name={getStatusIcon(booking.status)} className={`w-6 h-6 ${
+                      booking.status === 'pending' ? 'text-yellow-600' :
+                      booking.status === 'confirmed' ? 'text-blue-600' :
+                      booking.status === 'completed'? 'text-green-600' : 'text-red-600'
+                    }`} />
+                    <div>
+                      <h3 className="text-lg font-bold">{booking.service_type}</h3>
+                      <p className="text-xs text-muted-foreground">ID: {booking.id.slice(0, 8).toUpperCase()}</p>
                     </div>
-                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium capitalize ${getStatusColor(booking.status)}`}>
-                      {booking.status}
-                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold capitalize ${getStatusColor(booking.status)}`}>
+                    <Icon name={getStatusIcon(booking.status)} className="w-4 h-4" />
+                    {getStatusLabel(booking.status)}
+                  </span>
+                </div>
+
+                <div className="p-6">
+                  {/* Status Timeline */}
+                  {booking.status !== 'cancelled' && (
+                    <div className="mb-6">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Booking Progress</p>
+                      <div className="flex items-start gap-0">
+                        {timelineSteps.map((step, idx) => {
+                          const state = getTimelineStepState(step.key, booking.status);
+                          return (
+                            <div key={step.key} className="flex-1 flex flex-col items-center relative">
+                              {/* Connector line */}
+                              {idx < timelineSteps.length - 1 && (
+                                <div className={`absolute top-4 left-1/2 w-full h-0.5 ${
+                                  state === 'completed' ? 'bg-green-400' : 'bg-gray-200'
+                                }`} style={{ left: '50%' }} />
+                              )}
+                              {/* Step circle */}
+                              <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                                state === 'completed'
+                                  ? 'bg-green-500 border-green-500 text-white'
+                                  : state === 'active'
+                                  ? booking.status === 'pending' ? 'bg-yellow-500 border-yellow-500 text-white'
+                                    : booking.status === 'confirmed'? 'bg-blue-500 border-blue-500 text-white' :'bg-green-500 border-green-500 text-white' :'bg-white border-gray-300 text-gray-400'
+                              }`}>
+                                {state === 'completed' ? (
+                                  <Icon name="CheckIcon" className="w-4 h-4" />
+                                ) : (
+                                  <Icon name={step.icon} className="w-4 h-4" />
+                                )}
+                              </div>
+                              {/* Step label */}
+                              <div className="mt-2 text-center px-1">
+                                <p className={`text-xs font-semibold ${
+                                  state === 'upcoming' ? 'text-gray-400' : 'text-foreground'
+                                }`}>{step.label}</p>
+                                <p className={`text-xs mt-0.5 hidden sm:block ${
+                                  state === 'upcoming' ? 'text-gray-300' : 'text-muted-foreground'
+                                }`}>{step.description}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cancelled notice */}
+                  {booking.status === 'cancelled' && (
+                    <div className="mb-5 flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <Icon name="XCircleIcon" className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-red-700">This booking has been cancelled</p>
+                        {booking.cancellation_reason && (
+                          <p className="text-sm text-red-600 mt-0.5">Reason: {booking.cancellation_reason}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Booking details grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+                    <div className="flex items-center gap-2">
+                      <Icon name="UserIcon" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm">{booking.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Icon name="PhoneIcon" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm">{booking.phone}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Icon name="CalendarIcon" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm">{new Date(booking.event_date).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Icon name="MapPinIcon" className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm">{booking.event_location}</span>
+                    </div>
+                  </div>
+
+                  {booking.message && (
+                    <div className="mb-5 p-3 bg-accent/10 rounded-lg">
+                      <p className="text-sm break-words whitespace-pre-wrap max-h-28 overflow-y-auto">{booking.message}</p>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
                     {booking.status !== 'cancelled' && booking.status !== 'completed' && (
                       <>
                         <button
                           onClick={() => handleReschedule(booking)}
-                          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 text-sm font-medium"
                         >
                           <Icon name="CalendarIcon" className="w-4 h-4" />
                           Reschedule
                         </button>
                         <button
                           onClick={() => handleCancel(booking)}
-                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 text-sm font-medium"
                         >
                           <Icon name="XMarkIcon" className="w-4 h-4" />
-                          Cancel
+                          Cancel Booking
                         </button>
                       </>
                     )}
                     {booking.status === 'completed' && (
                       <button
                         onClick={() => handleOpenTestimonialForm(booking)}
-                        className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors flex items-center gap-2 text-sm font-medium"
                       >
                         <Icon name="StarIcon" className="w-4 h-4" />
                         Leave Review
@@ -476,49 +600,16 @@ Booked on: ${new Date(booking.created_at).toLocaleString()}
                     )}
                     <button
                       onClick={() => downloadConfirmation(booking)}
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
+                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2 text-sm font-medium"
                     >
                       <Icon name="ArrowDownTrayIcon" className="w-4 h-4" />
                       Download
                     </button>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Icon name="UserIcon" className="w-5 h-5 text-muted-foreground" />
-                    <span className="text-sm">{booking.name}</span>
+                  <div className="text-xs text-muted-foreground mt-3">
+                    Booked on {new Date(booking.created_at).toLocaleString()}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Icon name="PhoneIcon" className="w-5 h-5 text-muted-foreground" />
-                    <span className="text-sm">{booking.phone}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Icon name="CalendarIcon" className="w-5 h-5 text-muted-foreground" />
-                    <span className="text-sm">{new Date(booking.event_date).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Icon name="MapPinIcon" className="w-5 h-5 text-muted-foreground" />
-                    <span className="text-sm">{booking.event_location}</span>
-                  </div>
-                </div>
-
-                {booking.message && (
-                  <div className="mb-4 p-3 bg-accent/10 rounded-lg">
-                    <p className="text-sm">{booking.message}</p>
-                  </div>
-                )}
-
-                {booking.cancellation_reason && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-800">
-                      <strong>Cancellation Reason:</strong> {booking.cancellation_reason}
-                    </p>
-                  </div>
-                )}
-
-                <div className="text-xs text-muted-foreground mt-4">
-                  Booked on {new Date(booking.created_at).toLocaleString()}
                 </div>
               </div>
             ))}
